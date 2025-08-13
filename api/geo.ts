@@ -1,52 +1,44 @@
-// Edge Runtime (native ESM) to avoid CJS/ESM conflicts on Vercel
-export const config = { runtime: 'edge' } as const
-
-export default async function handler(req: Request): Promise<Response> {
+// Vercel Serverless Function (Node.js compatible)
+export default function handler(req: any, res: any) {
 	try {
-		const corsHeaders = new Headers({
-			'Cache-Control': 's-maxage=3600, stale-while-revalidate=86400',
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET, OPTIONS',
-			'Access-Control-Allow-Headers': 'Content-Type',
-			'Content-Type': 'application/json; charset=utf-8',
-		})
+		// 设置 CORS 头
+		res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
+		res.setHeader('Access-Control-Allow-Origin', '*')
+		res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+		res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
-		// Handle CORS preflight
+		// 处理 OPTIONS 请求
 		if (req.method === 'OPTIONS') {
-			return new Response(null, { status: 200, headers: corsHeaders })
+			return res.status(200).end()
 		}
 
-		// Read geo headers from Vercel/CF
-		const headers = req.headers
-		const country = headers.get('x-vercel-ip-country') || headers.get('cf-ipcountry') || null
-		const city = headers.get('x-vercel-ip-city') || null
-		const region = headers.get('x-vercel-ip-country-region') || null
-		const timezone = headers.get('x-vercel-ip-timezone') || null
+		// 从 Vercel 请求头中获取地理位置信息
+		const country = req.headers['x-vercel-ip-country'] || req.headers['cf-ipcountry'] || null
+		const city = req.headers['x-vercel-ip-city'] || null
+		const region = req.headers['x-vercel-ip-country-region'] || null
+		const timezone = req.headers['x-vercel-ip-timezone'] || null
 
-		const body = JSON.stringify({
+		// 返回地理位置信息
+		return res.status(200).json({
 			country: country || 'unknown',
 			city: city || 'unknown',
 			region: region || 'unknown',
 			timezone: timezone || 'unknown',
+			// 添加一些调试信息
 			headers: {
-				'x-vercel-ip-country': headers.get('x-vercel-ip-country'),
-				'x-vercel-ip-city': headers.get('x-vercel-ip-city'),
-				'x-vercel-ip-country-region': headers.get('x-vercel-ip-country-region'),
-				'x-vercel-ip-timezone': headers.get('x-vercel-ip-timezone'),
-				'cf-ipcountry': headers.get('cf-ipcountry'),
-				'x-forwarded-for': headers.get('x-forwarded-for'),
+				'x-vercel-ip-country': req.headers['x-vercel-ip-country'],
+				'x-vercel-ip-city': req.headers['x-vercel-ip-city'],
+				'x-vercel-ip-country-region': req.headers['x-vercel-ip-country-region'],
+				'x-vercel-ip-timezone': req.headers['x-vercel-ip-timezone'],
+				'cf-ipcountry': req.headers['cf-ipcountry'], // Cloudflare 备用
+				'x-forwarded-for': req.headers['x-forwarded-for'],
 			}
 		})
-
-		return new Response(body, { status: 200, headers: corsHeaders })
 	} catch (error: any) {
-		const errBody = JSON.stringify({
+		console.error('Geo API error:', error)
+		return res.status(500).json({ 
 			error: error?.message || 'Internal Server Error',
-			country: 'unknown',
-		})
-		return new Response(errBody, {
-			status: 500,
-			headers: { 'Content-Type': 'application/json; charset=utf-8' },
+			country: 'unknown'
 		})
 	}
 }
