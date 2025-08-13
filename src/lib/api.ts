@@ -11,26 +11,13 @@ const ITUNES_API = {
  */
 export function detectRegion(): 'cn' | 'us' {
 	if (typeof window !== 'undefined') {
-		// 1. 检查时区是否为中国时区
-		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-		if (timezone && (
-			timezone.includes('Shanghai') || 
-			timezone.includes('Beijing') ||
-			timezone.includes('Asia/Shanghai') ||
-			timezone.includes('Asia/Chongqing') ||
-			timezone.includes('Asia/Harbin') ||
-			timezone.includes('Asia/Urumqi')
-		)) {
-			return 'cn'
-		}
-		
-		// 2. 检查浏览器语言偏好
+		// 1. 检查浏览器语言偏好（最可靠的指标）
 		const lang = navigator.language || (navigator as any).userLanguage
 		if (lang && (lang.startsWith('zh') || lang.includes('CN'))) {
 			return 'cn'
 		}
 
-		// 3. 检查所有语言偏好
+		// 2. 检查所有语言偏好
 		if (navigator.languages) {
 			for (const language of navigator.languages) {
 				if (language.startsWith('zh') || language.includes('CN')) {
@@ -39,11 +26,19 @@ export function detectRegion(): 'cn' | 'us' {
 			}
 		}
 
-		// 4. 通过时间偏移量粗略判断（中国标准时间 UTC+8）
-		const timezoneOffset = new Date().getTimezoneOffset()
-		if (timezoneOffset === -480) { // UTC+8
+		// 3. 检查时区是否为中国大陆时区（更精确的检查）
+		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+		if (timezone && (
+			timezone === 'Asia/Shanghai' || 
+			timezone === 'Asia/Beijing' ||
+			timezone === 'Asia/Chongqing' ||
+			timezone === 'Asia/Harbin' ||
+			timezone === 'Asia/Urumqi'
+		)) {
 			return 'cn'
 		}
+		
+		// 注意：不再使用 UTC+8 时区偏移量判断，因为新加坡、马来西亚等也是 UTC+8
 	}
 	
 	// 默认使用美国区
@@ -64,9 +59,13 @@ export async function detectRegionAsync(): Promise<'cn' | 'us'> {
 		
 		if (response.ok) {
 			const data = await response.json()
-			// 如果检测到中国相关的国家代码
+			// 如果检测到中国相关的国家代码，使用中国区
 			if (data.country === 'CN' || data.country === 'HK' || data.country === 'TW' || data.country === 'MO') {
 				return 'cn'
+			}
+			// 对于其他所有国家（包括新加坡、美国等），使用美国区
+			if (data.country && data.country !== 'unknown') {
+				return 'us'
 			}
 		}
 	} catch (error) {
