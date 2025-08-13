@@ -1,8 +1,9 @@
 import type { ApiResponse, ITunesAppData } from './types'
 
-const ITUNES_API = {
-	cn: (appId: string) => `https://itunes.apple.com/cn/lookup?id=${appId}`,
-	us: (appId: string) => `https://itunes.apple.com/us/lookup?id=${appId}`,
+// 使用我们的代理 API 来避免 CORS 问题
+const ITUNES_PROXY_API = {
+	cn: (appId: string) => `/api/itunes?id=${appId}&region=cn`,
+	us: (appId: string) => `/api/itunes?id=${appId}&region=us`,
 }
 
 /**
@@ -78,22 +79,25 @@ export async function detectRegionAsync(): Promise<'cn' | 'us'> {
 }
 
 /**
- * 直接从 iTunes API 获取应用数据
+ * 通过代理 API 获取应用数据（解决 CORS 问题）
  */
 export async function fetchAppData(appId: string, region?: 'cn' | 'us'): Promise<ApiResponse> {
 	// 如果没有指定 region，自动检测
-	const targetRegion = region || detectRegion()
+	const targetRegion = region || await detectRegionAsync()
 	
 	try {
 		// 首先尝试指定的区域
-		const url = ITUNES_API[targetRegion](appId)
+		const url = ITUNES_PROXY_API[targetRegion](appId)
 		const response = await fetch(url)
 		
 		if (!response.ok) {
-			throw new Error(`iTunes API error: ${response.status}`)
+			throw new Error(`iTunes Proxy API error: ${response.status}`)
 		}
 		
-		const data: ITunesAppData = await response.json()
+		const proxyResponse = await response.json()
+		
+		// 代理 API 返回的数据结构：{ region, data, meta }
+		const data: ITunesAppData = proxyResponse.data
 		
 		// 如果找到了应用，返回数据
 		if (data.resultCount > 0) {
@@ -102,14 +106,15 @@ export async function fetchAppData(appId: string, region?: 'cn' | 'us'): Promise
 		
 		// 如果在当前区域没找到，尝试另一个区域
 		const fallbackRegion = targetRegion === 'cn' ? 'us' : 'cn'
-		const fallbackUrl = ITUNES_API[fallbackRegion](appId)
+		const fallbackUrl = ITUNES_PROXY_API[fallbackRegion](appId)
 		const fallbackResponse = await fetch(fallbackUrl)
 		
 		if (!fallbackResponse.ok) {
-			throw new Error(`iTunes API error: ${fallbackResponse.status}`)
+			throw new Error(`iTunes Proxy API error: ${fallbackResponse.status}`)
 		}
 		
-		const fallbackData: ITunesAppData = await fallbackResponse.json()
+		const fallbackProxyResponse = await fallbackResponse.json()
+		const fallbackData: ITunesAppData = fallbackProxyResponse.data
 		
 		if (fallbackData.resultCount > 0) {
 			return { region: fallbackRegion, data: fallbackData }
@@ -119,7 +124,7 @@ export async function fetchAppData(appId: string, region?: 'cn' | 'us'): Promise
 		throw new Error('App not found in any region')
 		
 	} catch (error) {
-		// 如果是 CORS 错误，提供更友好的错误信息
+		// 如果是网络错误，提供更友好的错误信息
 		if (error instanceof TypeError && error.message.includes('fetch')) {
 			throw new Error('无法连接到 App Store API，请检查网络连接')
 		}
