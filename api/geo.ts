@@ -1,3 +1,4 @@
+// Vercel API Route Handler
 export default async function handler(req: any, res: any) {
 	try {
 		// 从 Vercel 请求头中获取地理位置信息
